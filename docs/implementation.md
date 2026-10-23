@@ -258,6 +258,12 @@ Node の fetch と workerd の差に合わせて、外部 HTTP は `redirect: "m
 
 ## 設定とログ
 
+Cloudflare Workers Builds で、両 Worker を GitHub の `chikina-dev/discord-pdf-preview` の `master` に接続する。
+push ごとに `npm run check` を実行し、成功した Worker だけを本番へデプロイする。
+Preview は `npm run deploy:preview` で D1 migration を適用してからデプロイし、Gateway は `npm run deploy:gateway` を使う。
+プレビューブランチの自動デプロイは無効とし、Bot token は Cloudflare の実行時 secret を保持する。
+両 Worker のビルドは独立するため、Queue の契約変更では新旧コードの互換性を維持する。
+
 Bot token は各 Worker の secret に設定する。
 Gateway に Preview 用の D1 binding は持たせず、Preview に Gateway DO binding は持たせない。
 Gateway 用 DO の SQLite migration と Preview 用 D1 migration を、それぞれの設定で管理する。
