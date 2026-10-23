@@ -22,7 +22,15 @@ export async function processTask(task: PreviewTask, db: D1Database, token: stri
   const id = task.attachmentId;
   const schedule = async (seconds: number, kind: string, resetItem = true): Promise<Outcome> => {
     const delay = Math.max(1, Math.ceil(seconds));
-    if (dep.now() + delay * 1000 >= expiresAt) { await state.stop("expired"); return {}; }
+    if (dep.now() + delay * 1000 >= expiresAt) {
+      if (await state.operation()) {
+        await state.stop("delivery_unknown");
+      } else {
+        await state.patchItem(id, { status: "expired", last_error_kind: kind });
+        await state.completeIfFinished();
+      }
+      return {};
+    }
     if (resetItem) await state.patchItem(id, { status: "pending", next_attempt_at: dep.now() + delay * 1000, last_error_kind: kind });
     return { retrySeconds: delay };
   };
@@ -157,7 +165,7 @@ export async function processTask(task: PreviewTask, db: D1Database, token: stri
         return await schedule(error.retryAfter, "rate-limit", !await state.operation());
       }
       if (error.kind === "transient") return await schedule(backoff(attempts), "transient", !await state.operation());
-      if (error.kind === "missing" && await state.operation()) { await state.stop("delivery_unknown"); return {}; }
+      if (await state.operation()) { await state.stop("delivery_unknown"); return {}; }
       return await failed(error.kind);
     }
     // Database or infrastructure errors are retried without erasing a send marker.

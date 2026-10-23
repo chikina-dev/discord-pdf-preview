@@ -53,7 +53,7 @@ function harness(count = 1) {
   let uploads = 0, renders = 0, sourceReads = 0;
   const payloads: Record<string, unknown>[] = [];
   const edges: number[] = [];
-  const failures: { cdn?: number; write?: "lost-success" | "lost-failure" | "rate" | "size"; deleteOnRead?: number; afterSuccessDb?: boolean } = {};
+  const failures: { cdn?: number; write?: "lost-success" | "lost-failure" | "rate" | "size"; deleteOnRead?: number; afterSuccessDb?: boolean; lookupStatus?: number } = {};
   const fetcher = async (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(typeof input === "string" || input instanceof URL ? input : input.url);
     if (url.hostname === "cdn.discordapp.com") {
@@ -62,6 +62,9 @@ function harness(count = 1) {
     }
     assert.equal(url.hostname, "discord.com");
     assert.equal(new Headers(init?.headers).get("Authorization"), "Bot test-token");
+    if (failures.lookupStatus && (url.pathname.endsWith("/users/@me") || url.pathname.endsWith("/messages/500"))) {
+      return Response.json({ code: 50013 }, { status: failures.lookupStatus });
+    }
     if (url.pathname.endsWith("/users/@me")) return Response.json({ id: "999" });
     if (url.searchParams.has("limit")) return Response.json(reply ? [reply] : []);
     if (init?.method === "POST" || init?.method === "PATCH") {
@@ -248,4 +251,35 @@ test("cleanup removes expired job metadata; a late task cannot recreate it", asy
   await cleanup(h.store.db, h.dep.now());
   assert.equal(await h.state().job(), null);
   await h.run(); assert.equal(await h.state().job(), null); assert.equal(h.uploads, 1);
+});
+
+test("a retry beyond the deadline expires only its PDF, not other ready PDFs", async () => {
+  const h = harness(2);
+  h.tick(LIFETIME_MS - 11_000);
+  h.failures.cdn = 503;
+  await h.run("201", 4);
+  assert.equal((await h.state().item("201"))?.status, "expired");
+  assert.equal((await h.state().job())?.status, "active");
+  await h.run("202");
+  assert.equal(h.uploads, 1);
+  assert.equal(h.reply!.attachments[0].filename, "same-202.png");
+});
+
+test("permanent failure resolving another PDF's send stops the whole uncertain job", async () => {
+  const h = harness(2); h.failures.write = "lost-success";
+  await h.run("201");
+  h.failures.lookupStatus = 403;
+  await h.run("202");
+  assert.equal((await h.state().job())?.status, "delivery_unknown");
+  assert.equal((await h.state().item("202"))?.status, "pending");
+  assert.equal(h.uploads, 1);
+});
+
+test("Discord buckets are scoped by channel major parameter", async () => {
+  const h = harness();
+  const state = h.state();
+  await state.rateLimit("200", start + 10_000, false, "same-route-hash");
+  await state.rateLimit("201", start + 2_000, false, "same-route-hash");
+  assert.equal(await state.cooldown("200"), start + 10_000);
+  assert.equal(await state.cooldown("201"), start + 2_000);
 });

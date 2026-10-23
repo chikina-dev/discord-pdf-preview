@@ -109,13 +109,13 @@ export class State {
     if (results.some(result => result.meta.changes !== 1)) throw new LeaseLost("Commit ownership lost");
   }
   async cooldown(channelId: string) {
-    const result = await this.db.prepare("SELECT MAX(until_at) AS until_at FROM discord_cooldowns WHERE scope IN ('global',?) OR scope IN (SELECT 'bucket:' || bucket FROM discord_routes WHERE channel_id=?)")
+    const result = await this.db.prepare("SELECT MAX(until_at) AS until_at FROM discord_cooldowns WHERE scope IN ('global',?) OR scope IN (SELECT 'bucket:' || channel_id || ':' || bucket FROM discord_routes WHERE channel_id=?)")
       .bind(`channel:${channelId}`, channelId).first<{ until_at: number | null }>();
     return result?.until_at ?? 0;
   }
   async rateLimit(channelId: string, until: number, global: boolean, bucket?: string) {
     const statements = [this.db.prepare("INSERT INTO discord_cooldowns(scope,until_at) VALUES(?,?) ON CONFLICT(scope) DO UPDATE SET until_at=MAX(until_at,excluded.until_at)")
-      .bind(global ? "global" : bucket ? `bucket:${bucket}` : `channel:${channelId}`, until)];
+      .bind(global ? "global" : bucket ? `bucket:${channelId}:${bucket}` : `channel:${channelId}`, until)];
     if (bucket) statements.push(this.db.prepare("INSERT INTO discord_routes(channel_id,bucket) VALUES(?,?) ON CONFLICT(channel_id,bucket) DO NOTHING").bind(channelId, bucket));
     await this.db.batch(statements);
   }
@@ -126,6 +126,6 @@ export async function cleanup(db: D1Database, now: number) {
     db.prepare("UPDATE preview_jobs SET status='expired' WHERE expires_at<=? AND status='active'").bind(now),
     db.prepare("DELETE FROM preview_jobs WHERE expires_at<? AND status<>'active'").bind(now - 86_400_000),
     db.prepare("DELETE FROM discord_cooldowns WHERE until_at<?").bind(now),
-    db.prepare("DELETE FROM discord_routes WHERE 'bucket:' || bucket NOT IN (SELECT scope FROM discord_cooldowns)"),
+    db.prepare("DELETE FROM discord_routes WHERE 'bucket:' || channel_id || ':' || bucket NOT IN (SELECT scope FROM discord_cooldowns)"),
   ]);
 }
