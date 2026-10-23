@@ -1,0 +1,8 @@
+node_modules/
+output/
+.wrangler/
+.dev.vars*
+!.dev.vars.example
+.env*
+spike/output/
+spike/worker-configuration.d.ts

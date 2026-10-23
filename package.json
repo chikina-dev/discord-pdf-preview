@@ -1,0 +1,26 @@
+{
+  "name": "discord-pdf-preview",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node scripts/test.mjs",
+    "test:integration": "node scripts/integration.mjs",
+    "build": "WRANGLER_LOG_PATH=/tmp/discord-pdf-wrangler-logs wrangler deploy --config wrangler.gateway.jsonc --dry-run --outdir output/gateway && WRANGLER_LOG_PATH=/tmp/discord-pdf-wrangler-logs wrangler deploy --config wrangler.preview.jsonc --dry-run --outdir output/preview",
+    "types": "WRANGLER_LOG_PATH=/tmp/discord-pdf-wrangler-logs wrangler types --config wrangler.gateway.jsonc src/gateway/env.d.ts --env-interface GatewayEnv --include-runtime false --strict-vars false && WRANGLER_LOG_PATH=/tmp/discord-pdf-wrangler-logs wrangler types --config wrangler.preview.jsonc src/preview/env.d.ts --env-interface PreviewEnv --include-runtime false",
+    "spike": "node spike/run.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@cf-wasm/png": "^0.4.0",
+    "@hyzyla/pdfium": "^3.0.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261023.1",
+    "esbuild": "^0.28.2",
+    "miniflare": "^5.20261019.2-beta",
+    "pdf-lib": "^1.17.1",
+    "typescript": "^7.0.2",
+    "wrangler": "^4.152.0"
+  }
+}

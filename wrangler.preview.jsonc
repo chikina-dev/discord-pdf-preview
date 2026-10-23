@@ -1,0 +1,15 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "discord-pdf-preview-renderer",
+  "main": "src/preview/worker.ts",
+  "compatibility_date": "2026-10-23",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "preview_urls": false,
+  "secrets": { "required": ["DISCORD_BOT_TOKEN"] },
+  "d1_databases": [{ "binding": "DB", "database_name": "discord-pdf-preview", "database_id": "617b0fcd-cd2d-4701-b619-4b838c26d8ca", "migrations_dir": "migrations" }],
+  "queues": { "consumers": [{ "queue": "discord-pdf-previews", "max_batch_size": 1, "max_batch_timeout": 1, "max_concurrency": 1, "max_retries": 100, "retry_delay": 5 }] },
+  "limits": { "cpu_ms": 30000 },
+  "triggers": { "crons": ["13 3 * * *"] },
+  "observability": { "enabled": true, "head_sampling_rate": 1 }
+}
