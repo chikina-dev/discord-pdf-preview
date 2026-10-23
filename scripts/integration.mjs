@@ -6,7 +6,12 @@ import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import { decode } from "@cf-wasm/png/node";
 import { createFixtures } from "../spike/fixtures.mjs";
 
-execFileSync("npm", ["run", "build"], { stdio: "inherit" });
+// The two local test bundles must keep their own names even inside a single
+// Worker's Builds job. Actual deploy commands retain Cloudflare's CI guards.
+const buildEnv = { ...process.env };
+delete buildEnv.WRANGLER_CI_MATCH_TAG;
+delete buildEnv.WRANGLER_CI_OVERRIDE_NAME;
+execFileSync("npm", ["run", "build"], { stdio: "inherit", env: buildEnv });
 async function modules(directory) {
   const root = resolve(directory);
   const files = await readdir(root);
