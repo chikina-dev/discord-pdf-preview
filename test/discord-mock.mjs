@@ -42,13 +42,13 @@ export class MockDiscord extends DurableObject {
           active.send(JSON.stringify({ op: 0, t: "MESSAGE_CREATE", s: 4, d: { ...source, id: "101", author: { id: "999", bot: true } } }));
         } else if (frame.op === 6) {
           resumes++;
-          if (invalidate) { invalidate = false; active.send(JSON.stringify({ op: 9, d: false })); }
+          if (invalidate) { invalidate = false; active.send(JSON.stringify({ op: 9, d: false, s: null, t: null })); }
           else active.send(JSON.stringify({ op: 0, t: "RESUMED", s: 5, d: {} }));
         } else if (frame.op === 1) {
-          heartbeats++; active.send(JSON.stringify({ op: 11, d: null }));
+          heartbeats++; active.send(JSON.stringify({ op: 11, d: null, s: null, t: null }));
         }
       });
-      active.send(JSON.stringify({ op: 10, d: { heartbeat_interval: 1000 } }));
+      active.send(JSON.stringify({ op: 10, d: { heartbeat_interval: 1000 }, s: null, t: null }));
       return new Response(null, { status: 101, webSocket: pair[0] });
     }
     if (request.headers.get("Authorization") !== "Bot test-token") throw new Error("Missing Bot authentication");

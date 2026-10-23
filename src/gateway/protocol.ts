@@ -12,7 +12,7 @@ export function parsePayload(raw: string): Payload {
   const value: unknown = JSON.parse(raw);
   if (!record(value) || typeof value.op !== "number" || !("d" in value) ||
     (value.s !== undefined && value.s !== null && !Number.isInteger(value.s)) ||
-    (value.t !== undefined && typeof value.t !== "string")) throw new Error("Invalid Gateway payload");
+    (value.t !== undefined && value.t !== null && typeof value.t !== "string")) throw new Error("Invalid Gateway payload");
   return { op: value.op, d: value.d, ...(typeof value.s === "number" ? { s: value.s } : {}),
     ...(typeof value.t === "string" ? { t: value.t } : {}) };
 }

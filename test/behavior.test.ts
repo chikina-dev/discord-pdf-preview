@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { readFileSync } from "node:fs";
 import { previewTasks } from "../src/gateway/events.ts";
-import { Protocol, closePolicy, gatewayUrl } from "../src/gateway/protocol.ts";
+import { Protocol, closePolicy, gatewayUrl, parsePayload } from "../src/gateway/protocol.ts";
 import { LIFETIME_MS, isTask, outputName, type PreviewTask } from "../src/shared/task.ts";
 import { processTask } from "../src/preview/process.ts";
 import { State, cleanup } from "../src/preview/state.ts";
@@ -132,6 +132,15 @@ test("Gateway detects missed ACK, handles Invalid Session and fatal close codes"
   assert.equal(closePolicy(4009).invalidate, true);
   assert.ok(gatewayUrl("wss://gateway-us-east1-b.discord.gg"));
   assert.equal(gatewayUrl("wss://discord.gg.evil.example"), null);
+});
+
+test("real Discord control frames accept null sequence and event name", () => {
+  const protocol = new Protocol();
+  const hello = parsePayload(JSON.stringify({ op: 10, d: { heartbeat_interval: 41250 }, s: null, t: null }));
+  assert.deepEqual(protocol.consume(hello), [{ type: "hello", interval: 41250 }]);
+  protocol.heartbeat();
+  protocol.consume(parsePayload(JSON.stringify({ op: 11, d: null, s: null, t: null })));
+  assert.equal(protocol.acknowledged, true);
 });
 
 test("two attachments create exactly one reply, retain both images in source order", async () => {

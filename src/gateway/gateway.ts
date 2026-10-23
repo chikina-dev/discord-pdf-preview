@@ -9,6 +9,7 @@ export class Gateway extends DurableObject<GatewayEnv> {
   private socket: WebSocket | null = null;
   private generation = 0;
   private connecting = false;
+  private authenticated = false;
   private flushing = false;
   private heartbeatTimer: ReturnType<typeof setTimeout> | undefined;
   private helloTimer: ReturnType<typeof setTimeout> | undefined;
@@ -35,7 +36,7 @@ export class Gateway extends DurableObject<GatewayEnv> {
     this.ctx.storage.sql.exec("INSERT INTO gateway_state(id,data) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data", JSON.stringify(state));
   }
   async status() {
-    return { connected: this.socket?.readyState === 1, connecting: this.connecting, fatal: this.stored.fatal,
+    return { connected: this.socket?.readyState === 1, authenticated: this.authenticated, connecting: this.connecting, fatal: this.stored.fatal,
       pending: this.ctx.storage.sql.exec<{ count: number }>("SELECT COUNT(*) AS count FROM outbox").one().count };
   }
   async ensureConnected() {
@@ -165,6 +166,7 @@ export class Gateway extends DurableObject<GatewayEnv> {
       this.persist(next);
     });
     this.stored = next;
+    if (payload.t === "READY" || payload.t === "RESUMED") this.authenticated = true;
     if (payload.t === "READY" && record(payload.d)) {
       log("gateway-ready", { guildCount: Array.isArray(payload.d.guilds) ? payload.d.guilds.length : 0 });
     } else if (payload.t === "RESUMED") { log("gateway-resumed"); }
@@ -172,6 +174,7 @@ export class Gateway extends DurableObject<GatewayEnv> {
   }
   private stopSocket() {
     ++this.generation;
+    this.authenticated = false;
     clearTimeout(this.heartbeatTimer); clearTimeout(this.helloTimer);
     const socket = this.socket; this.socket = null;
     // A normal 1000/1001 close invalidates Discord's resumable session.
