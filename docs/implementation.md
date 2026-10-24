@@ -261,6 +261,7 @@ Node の fetch と workerd の差に合わせて、外部 HTTP は `redirect: "m
 Cloudflare Workers Builds で、両 Worker を GitHub の `chikina-dev/discord-pdf-preview` の `main` に接続する。
 push ごとに `npm run check` を実行し、成功した Worker だけを本番へデプロイする。
 Preview は `npm run deploy:preview` で D1 migration を適用してからデプロイし、Gateway は `npm run deploy:gateway` を使う。
+Gateway のデプロイでは DO のコード更新を `immediate` に指定し、既存接続も保存済みセッションから修正版で再接続する。
 プレビューブランチの自動デプロイは無効とし、Bot token は Cloudflare の実行時 secret を保持する。
 両 Worker のビルドは独立するため、Queue の契約変更では新旧コードの互換性を維持する。
 

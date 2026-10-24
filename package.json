@@ -8,7 +8,7 @@
     "test:integration": "node scripts/integration.mjs",
     "check": "npm test && npm run typecheck && npm run test:integration",
     "deploy:preview": "wrangler d1 migrations apply DB --remote --config wrangler.preview.jsonc && wrangler deploy --config wrangler.preview.jsonc",
-    "deploy:gateway": "wrangler deploy --config wrangler.gateway.jsonc",
+    "deploy:gateway": "wrangler deploy --config wrangler.gateway.jsonc --durable-objects-code-update-mode immediate",
     "build": "WRANGLER_LOG_PATH=/tmp/discord-pdf-wrangler-logs wrangler deploy --config wrangler.gateway.jsonc --dry-run --outdir output/gateway && WRANGLER_LOG_PATH=/tmp/discord-pdf-wrangler-logs wrangler deploy --config wrangler.preview.jsonc --dry-run --outdir output/preview",
     "types": "WRANGLER_LOG_PATH=/tmp/discord-pdf-wrangler-logs wrangler types --config wrangler.gateway.jsonc src/gateway/env.d.ts --env-interface GatewayEnv --include-runtime false --strict-vars false && WRANGLER_LOG_PATH=/tmp/discord-pdf-wrangler-logs wrangler types --config wrangler.preview.jsonc src/preview/env.d.ts --env-interface PreviewEnv --include-runtime false",
     "spike": "node spike/run.mjs",
