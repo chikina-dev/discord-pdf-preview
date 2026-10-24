@@ -66,6 +66,17 @@ try {
   const image = decode(png);
   assert.equal(image.width, 847); assert.equal(image.height, 1200);
   assert.deepEqual(Array.from(image.image.subarray(0, 4)), [255, 255, 255, 255], "First page, not magenta second page");
+  // A successful upgrade must survive the original 15-second connection deadline.
+  // This failed with a lingering AbortSignal.timeout(): a healthy socket reconnected.
+  const beforeIdle = await stats();
+  await new Promise(resolve => setTimeout(resolve, 20_000));
+  const afterIdle = await stats();
+  assert.equal(afterIdle.identifies, beforeIdle.identifies, "A healthy idle connection must not Identify again");
+  assert.equal(afterIdle.resumes, beforeIdle.resumes, "The upgrade timeout must not close a connected socket");
+  const idleStatus = await gateway.status();
+  assert.equal(idleStatus.authenticated, true);
+  assert.ok(idleStatus.connectedForMs >= 20_000, "Connection age must continue beyond the upgrade deadline");
+  assert.ok(idleStatus.lastHeartbeatAckAt, "Heartbeat ACKs must continue on the original connection");
   await mock.fetch("https://mock.invalid/__disconnect");
   await waitFor(value => value.resumes >= 1, "Gateway Resume");
   await mock.fetch("https://mock.invalid/__disconnect?invalidate=1");
@@ -77,7 +88,7 @@ try {
   await writeFile(resolve(mockRoot, "preview.png"), png);
   await writeFile(resolve(mockRoot, "results.json"), JSON.stringify({
     checks: ["WebSocket Identify", "MESSAGE_CREATE filtering", "Queue dispatch", "D1 migrations", "PDFium and PNG WASM",
-      "lost-response recovery", "one reply with two attachments", "Heartbeat ACK", "Gateway Resume", "Invalid Session re-identification"],
+      "lost-response recovery", "one reply with two attachments", "Heartbeat ACK", "healthy connection survives upgrade timeout", "Gateway Resume", "Invalid Session re-identification"],
     stats: await stats(),
   }, null, 2));
   console.log("Integration passed: Gateway WebSocket → Queue → D1 → WASM → one Discord reply; reconnect and uncertain-send recovery verified.");

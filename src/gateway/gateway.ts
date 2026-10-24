@@ -10,6 +10,8 @@ export class Gateway extends DurableObject<GatewayEnv> {
   private generation = 0;
   private connecting = false;
   private authenticated = false;
+  private connectedAt: number | null = null;
+  private lastHeartbeatAckAt: number | null = null;
   private flushing = false;
   private heartbeatTimer: ReturnType<typeof setTimeout> | undefined;
   private helloTimer: ReturnType<typeof setTimeout> | undefined;
@@ -37,6 +39,8 @@ export class Gateway extends DurableObject<GatewayEnv> {
   }
   async status() {
     return { connected: this.socket?.readyState === 1, authenticated: this.authenticated, connecting: this.connecting, fatal: this.stored.fatal,
+      connectedForMs: this.connectedAt === null ? 0 : Date.now() - this.connectedAt,
+      lastHeartbeatAckAt: this.lastHeartbeatAckAt,
       pending: this.ctx.storage.sql.exec<{ count: number }>("SELECT COUNT(*) AS count FROM outbox").one().count };
   }
   async ensureConnected() {
@@ -79,18 +83,30 @@ export class Gateway extends DurableObject<GatewayEnv> {
       }
       const url = gatewayUrl(address);
       if (!url) { this.stored.session = null; this.persist(); throw new Error("Invalid Gateway URL"); }
-      const response = await fetch(url, { headers: { Upgrade: "websocket" }, signal: AbortSignal.timeout(15_000) });
+      // The deadline belongs to the HTTP upgrade, not the WebSocket lifetime.
+      // An AbortSignal.timeout() left attached also closes an established socket.
+      const upgradeController = new AbortController();
+      const upgradeTimeout = setTimeout(() => upgradeController.abort(), 15_000);
+      let response: Response;
+      try {
+        response = await fetch(url, { headers: { Upgrade: "websocket" }, signal: upgradeController.signal });
+      } finally { clearTimeout(upgradeTimeout); }
       if (generation !== this.generation) { response.webSocket?.close(1000); return; }
       if (response.status !== 101 || !response.webSocket) { await response.body?.cancel(); throw new Error("Gateway upgrade failed"); }
       const socket = response.webSocket;
       this.socket = socket;
+      this.connectedAt = Date.now();
       const protocol = new Protocol();
       socket.accept();
-      this.helloTimer = setTimeout(() => this.ctx.waitUntil(this.reconnect(generation, false)), 15_000);
+      this.helloTimer = setTimeout(() => {
+        log("gateway-hello-timeout");
+        this.ctx.waitUntil(this.reconnect(generation, false));
+      }, 15_000);
       socket.addEventListener("message", event => {
         if (generation !== this.generation || typeof event.data !== "string") return;
         try {
           const payload = parsePayload(event.data);
+          if (payload.op === 11) this.lastHeartbeatAckAt = Date.now();
           for (const command of protocol.consume(payload)) {
             if (command.type === "hello") {
               clearTimeout(this.helloTimer);
@@ -113,6 +129,7 @@ export class Gateway extends DurableObject<GatewayEnv> {
       socket.addEventListener("close", event => {
         if (generation !== this.generation) return;
         const policy = closePolicy(event.code);
+        log("gateway-disconnected", { code: event.code, wasClean: event.wasClean });
         if (policy.fatal) { this.stored.fatal = true; this.persist(); log("gateway-fatal", { code: event.code }); }
         this.ctx.waitUntil(this.reconnect(generation, policy.invalidate));
       });
@@ -140,7 +157,10 @@ export class Gateway extends DurableObject<GatewayEnv> {
     this.heartbeatTimer = setTimeout(() => {
       if (generation !== this.generation) return;
       try {
-        if (!protocol.heartbeat()) { this.ctx.waitUntil(this.reconnect(generation, false)); return; }
+        if (!protocol.heartbeat()) {
+          log("gateway-heartbeat-timeout");
+          this.ctx.waitUntil(this.reconnect(generation, false)); return;
+        }
         socket.send(JSON.stringify({ op: 1, d: this.stored.session?.sequence ?? null }));
         this.heartbeat(socket, protocol, interval, generation, false);
       } catch { this.ctx.waitUntil(this.reconnect(generation, false)); }
@@ -175,6 +195,8 @@ export class Gateway extends DurableObject<GatewayEnv> {
   private stopSocket() {
     ++this.generation;
     this.authenticated = false;
+    this.connectedAt = null;
+    this.lastHeartbeatAckAt = null;
     clearTimeout(this.heartbeatTimer); clearTimeout(this.helloTimer);
     const socket = this.socket; this.socket = null;
     // A normal 1000/1001 close invalidates Discord's resumable session.
